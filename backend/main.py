@@ -4,12 +4,13 @@ import boto3
 import os
 import threading
 import requests
+import uuid  # For unique file names
 
 app = Flask(__name__)
 
 # AWS S3 configuration
-S3_BUCKET = "your-s3-bucket-name"
-s3_client = boto3.client('s3')
+S3_BUCKET = "project-mp3-files"
+s3_client = boto3.client('s3', region_name='us-east-1')
 
 @app.route('/convert', methods=['POST'])
 def convert():
@@ -37,14 +38,14 @@ def convert():
             ydl.download([youtube_url])
 
         # Upload the file to S3
-        s3_key = "output.mp3"
+        s3_key = f"{uuid.uuid4()}.mp3"  # Generate a unique file name
         s3_client.upload_file(output_file, S3_BUCKET, s3_key)
 
         # Generate pre-signed URL for download
         presigned_url = s3_client.generate_presigned_url(
             'get_object',
             Params={'Bucket': S3_BUCKET, 'Key': s3_key},
-            ExpiresIn=3600
+            ExpiresIn=3600  # 1 hour
         )
 
         # Return the pre-signed URL to the client
@@ -74,58 +75,5 @@ if __name__ == '__main__':
 
     # Run the test after the server starts
     run_test()
-from flask import Flask, request, jsonify
-import yt_dlp
-import boto3
-import os
 
-app = Flask(__name__)
 
-# AWS S3 configuration
-S3_BUCKET = "your-s3-bucket-name"
-s3_client = boto3.client('s3')
-
-@app.route('/convert', methods=['POST'])
-def convert():
-    # Parse the request data
-    data = request.get_json()
-    youtube_url = data.get('youtubeUrl')
-
-    if not youtube_url:
-        return jsonify({'error': 'YouTube URL is required'}), 400
-
-    try:
-        # Download and convert YouTube video to MP3
-        output_file = "/tmp/output.mp3"
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-            'outtmpl': output_file,
-        }
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([youtube_url])
-
-        # Upload the file to S3
-        s3_key = "output.mp3"
-        s3_client.upload_file(output_file, S3_BUCKET, s3_key)
-
-        # Generate pre-signed URL for download
-        presigned_url = s3_client.generate_presigned_url(
-            'get_object',
-            Params={'Bucket': S3_BUCKET, 'Key': s3_key},
-            ExpiresIn=3600
-        )
-
-        # Return the pre-signed URL to the client
-        return jsonify({'downloadUrl': presigned_url}), 200
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
